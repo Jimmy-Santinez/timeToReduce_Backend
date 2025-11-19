@@ -1,0 +1,192 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  DOCTOR
+  PATIENT
+  ADMIN
+}
+
+enum MealType {
+  BREAKFAST
+  SNACK_MORNING
+  LUNCH
+  SNACK_AFTERNOON
+  DINNER
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users   User[]
+  recipes Recipe[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  email        String   @unique
+  name         String
+  role         Role
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  doctorProfile  DoctorProfile?
+  patientProfile PatientProfile?
+  comments       Comment[]      @relation("UserComments")
+}
+
+model DoctorProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  licenseNumber String?
+  office        String?
+  bio           String?
+  createdAt     DateTime @default(now())
+
+  user     User             @relation(fields: [userId], references: [id])
+  patients PatientProfile[] @relation("DoctorPatients")
+  recipes  Recipe[]
+}
+
+model PatientProfile {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  doctorId   String?
+  birthDate  DateTime?
+  gender     String?
+  allergies  String?
+  goals      String?
+  createdAt  DateTime  @default(now())
+
+  user    User           @relation(fields: [userId], references: [id])
+  doctor  DoctorProfile? @relation("DoctorPatients", fields: [doctorId], references: [id])
+
+  checkins  CheckIn[]
+  dietPlans DietPlan[]
+}
+
+model DietPlan {
+  id        String   @id @default(cuid())
+  patientId String
+  title     String
+  startDate DateTime
+  weeks     Int      @default(1)
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient PatientProfile @relation(fields: [patientId], references: [id])
+  days    DietDay[]
+}
+
+model DietDay {
+  id         String   @id @default(cuid())
+  dietPlanId String
+  date       DateTime
+  notes      String?
+
+  plan     DietPlan @relation(fields: [dietPlanId], references: [id])
+  meals    Meal[]
+  comments Comment[] @relation("DietDayComments")
+
+  @@unique([dietPlanId, date])
+}
+
+model Meal {
+  id        String   @id @default(cuid())
+  dietDayId String
+  type      MealType
+  recipeId  String?
+  notes     String?
+  done      Boolean  @default(false)
+
+  day      DietDay   @relation(fields: [dietDayId], references: [id])
+  recipe   Recipe?   @relation(fields: [recipeId], references: [id])
+  comments Comment[] @relation("MealComments")
+
+  @@unique([dietDayId, type])
+}
+
+model Recipe {
+  id         String   @id @default(cuid())
+  tenantId   String
+  doctorId   String?
+  name       String
+  portions   Int      @default(1)
+  kcal       Int?
+  protein_g  Float?
+  carbs_g    Float?
+  fat_g      Float?
+  steps      String?
+  imageUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id])
+  doctor   DoctorProfile? @relation(fields: [doctorId], references: [id]) // 👈 ahora opcional
+  items    RecipeIngredient[]
+  meals    Meal[]         // 👈 lado inverso de Meal.recipe
+}
+
+model Ingredient {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  unit            String?
+  kcalPerUnit     Float?
+  proteinPerUnit  Float?
+  carbsPerUnit    Float?
+  fatPerUnit      Float?
+  createdAt       DateTime @default(now())
+
+  recipes RecipeIngredient[]
+}
+
+model RecipeIngredient {
+  recipeId     String
+  ingredientId String
+  amount       Float
+  notes        String?
+
+  recipe     Recipe     @relation(fields: [recipeId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@id([recipeId, ingredientId])
+}
+
+model CheckIn {
+  id        String   @id @default(cuid())
+  patientId String
+  date      DateTime
+  weightKg  Float?
+  waistCm   Float?
+  energy    Int?
+  adherence Int?
+  notes     String?
+
+  patient PatientProfile @relation(fields: [patientId], references: [id])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  authorId  String
+  text      String
+  createdAt DateTime @default(now())
+  mealId    String?
+  dietDayId String?
+
+  author  User    @relation("UserComments", fields: [authorId], references: [id])
+  meal    Meal?   @relation("MealComments", fields: [mealId], references: [id])
+  dietDay DietDay? @relation("DietDayComments", fields: [dietDayId], references: [id])
+}
